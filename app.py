@@ -12,6 +12,7 @@ import zlib
 from collections import Counter
 from pathlib import Path
 
+#from PIL.ImageChops import overlay
 import numpy as np
 import streamlit as st
 from PIL import Image, ImageDraw, ImageFont, ImageOps, UnidentifiedImageError
@@ -442,20 +443,23 @@ with tab_run:
 
             n_sick = len([c for c in view["cls"] if class_info(names.get(int(c), str(c)))["diseased"]])
             
+            # ---- Metrics Block ----
             m1, m2, m3 = st.columns(3)
             m1.metric("Leaves Detected", n)
             m2.metric("Flagged Diseased", n_sick)
             m3.metric("Analysis Time", f"{inst['ms']:.0f} ms")
 
-            overlay = render_overlay(img, view, names, show_masks, show_boxes, opacity)
-            
-            c1, c2 = st.columns(2)
-            with c1:
+            # Generate the segmentation overlay image first
+            overlay_img = render_overlay(img, view, names, show_masks, show_boxes, opacity)
+
+            # Side-by-side responsive image display container
+            img_col1, img_col2 = st.columns(2)
+            with img_col1:
                 st.caption("Original")
-                show_image(img)
-            with c2:
+                st.image(img, use_container_width=True)
+            with img_col2:
                 st.caption("Segmentation")
-                show_image(overlay)
+                st.image(overlay_img, use_container_width=True)
 
             if n:
                 st.markdown("#### Detected leaves")
@@ -476,7 +480,7 @@ with tab_run:
                 st.dataframe(table_data, use_container_width=True)
 
                 buf = io.BytesIO()
-                overlay.save(buf, "PNG")
+                overlay_img.save(buf, "PNG")
                 stem = Path(f.name).stem
                 
                 batch_results.append({
@@ -487,9 +491,9 @@ with tab_run:
                 })
 
                 d1, d2 = st.columns(2)
-                d1.download_button("Download result image", buf.getvalue(), file_name=f"{stem}_segmented.png", mime="image/png", key=f"dl_img_{idx}_{digest[:8]}")
-                d2.download_button("Download detections (CSV)", detections_csv(view, names, f.name), file_name=f"{stem}_detections.csv", mime="text/csv", key=f"dl_csv_{idx}_{digest[:8]}")
-
+                d1.download_button("Download result image", buf.getvalue(), file_name=f"{stem}_segmented.png", mime="image/png", key=f"dl_img_{idx}_{digest[:8]}", use_container_width=True)
+                d2.download_button("Download detections (CSV)", detections_csv(view, names, f.name), file_name=f"{stem}_detections.csv", mime="text/csv", key=f"dl_csv_{idx}_{digest[:8]}", use_container_width=True)
+            
             if n == 0:
                 st.info("Tip: Ensure the leaf fills the frame and is well-lit. The model only recognizes cassava leaves.")
 
