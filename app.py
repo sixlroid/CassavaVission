@@ -12,7 +12,6 @@ import zlib
 from collections import Counter
 from pathlib import Path
 
-#from PIL.ImageChops import overlay
 import numpy as np
 import streamlit as st
 from PIL import Image, ImageDraw, ImageFont, ImageOps, UnidentifiedImageError
@@ -109,8 +108,7 @@ def load_model(path_str: str) -> dict:
         imgsz=int(args.get("imgsz") or DEFAULT_IMGSZ),
         metrics=dict(ckpt.get("train_metrics") or {}),
         history=dict(ckpt.get("train_results") or {}),
-        best_epoch=(int(ckpt["epoch"]) + 1) if isinstance(ckpt.get("epoch"), (int, float)) else None,
-        params=params,
+        best_epoch=(int(ckpt["epoch"]) + 1) if isinstance(ckpt.get("epoch"), (int, float)) and ckpt.get("epoch") >= 0 else None,        params=params,
         size_mb=Path(path_str).stat().st_size / 1e6,
     )
 
@@ -524,12 +522,12 @@ with tab_model:
     st.subheader("Model Information")
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Architecture", bundle["arch"])
-    c2.metric("Parameters", f"{bundle['params'] / 1e6:.1f} M" if bundle["params"] else "-")
+    c2.metric("Parameters", f"{bundle['params'] / 1e6:.1f} M" if bundle["params"] else "N/A")
     c3.metric("Input Size", f"{imgsz} px")
     c4.metric("Classes", str(len(names)))
 
     st.subheader("Validation Performance")
-    pct = lambda k: f"{m[k] * 100:.1f}%" if k in m else "-"
+    pct = lambda k: f"{m[k] * 100:.1f}%" if k in m else "N/A"
     m1, m2, m3, m4, m5 = st.columns(5)
     m1.metric("Mask mAP@.5:.95", pct("metrics/mAP50-95(M)"))
     m2.metric("Mask mAP@.5", pct("metrics/mAP50(M)"))
@@ -546,16 +544,15 @@ with tab_model:
             with col1: show_image(pngs[0])
             with col2: show_image(pngs[1])
         else:
-            st.info("Training history not available in this checkpoint.")
+            st.warning("Training history not available in this checkpoint.")
     except Exception:
-        st.info("Training history not available in this checkpoint.")
+        st.warning("Training history not available in this checkpoint.")
 
     st.subheader("Training Configuration")
-    g = lambda k: str(args[k]) if k in args and args[k] is not None else "-"
+    g = lambda k: str(args[k]) if k in args and args[k] is not None else "N/A"
     config_data = {
         "Max Epochs": g("epochs"),
-        "Best Epoch": str(bundle["best_epoch"] or "-"),
-        "Batch Size": g("batch"),
+        "Best Epoch": str(bundle["best_epoch"]) if bundle["best_epoch"] else "N/A",        "Batch Size": g("batch"),
         "Optimizer": g("optimizer"),
         "Initial LR": g("lr0"),
         "Patience": g("patience")
@@ -571,7 +568,7 @@ with tab_model:
             with cols[i % 2]:
                 show_image(p, caption=str(Path(p).relative_to(RUNS_DIR)))
     else:
-        st.info("No /runs artifacts found. Place your runs folder next to app.py.")
+        st.warning("No /runs artifacts found. Place your runs folder next to app.py.")
 
     st.subheader("Held-out Test Set (Unseen Data)")
     if test_imgs:
@@ -580,7 +577,7 @@ with tab_model:
             with cols[i % 2]:
                 show_image(p, caption=str(Path(p).relative_to(RUNS_DIR)))
     else:
-        st.info("No test-set artifacts found.")
+        st.warning("No test-set artifacts found.")
 
 # ---- About Tab ---------------------------------------------------------------
 with tab_about:
@@ -597,7 +594,7 @@ with tab_about:
     * **Results are decision support, not a diagnosis.** Confirm with an agricultural extension officer.
     """)
 
-    st.subheader("Team")
+    st.subheader("Members")
     st.markdown("""
     * Kenneth Ibardaloza
     * Alexis Mesina
