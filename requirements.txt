@@ -1,0 +1,5 @@
+streamlit>=1.35
+ultralytics>=8.4.0
+pillow>=10.1
+numpy
+matplotlib
