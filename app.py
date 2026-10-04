@@ -45,11 +45,11 @@ CLASS_INFO = {
         desc="Uniform green leaf with no mosaic or streak pattern.",
     ),
     "MosaicDisease": dict(
-        label="Mosaic Disease", short="CMD", color=(222, 184, 35), diseased=True,
+        label="Mosaic Disease", short="Mosaic Disease", color=(222, 184, 35), diseased=True,
         desc="Yellow-green mosaic patches, often with curled or distorted leaves.",
     ),
     "BrownStreak": dict(
-        label="Brown Streak Disease", short="CBSD", color=(139, 69, 19), diseased=True,
+        label="Brown Streak Disease", short="Brown Streak Disease", color=(139, 69, 19), diseased=True,
         desc="Yellow, feathery patches that follow the veins; browning in later stages.",
     ),
 }
