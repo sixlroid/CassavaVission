@@ -21,7 +21,6 @@ from PIL import Image, ImageDraw, ImageFont, ImageOps, UnidentifiedImageError
 # --------------------------------------------------------------------------- #
 st.set_page_config(
     page_title="CassavaVision | Cassava Leaf Segmentation",
-    page_icon="🍃",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -34,7 +33,7 @@ RUNS_DIR = APP_DIR / "runs"
 
 DEFAULT_IMGSZ = 640
 MAX_FILE_MB = 10
-MAX_FILES = 6              # Maximum upload limit set to 6 images
+MAX_FILES = 6
 MIN_SIDE = 64
 MAX_SIDE = 1600
 MIN_CONF = 0.05
@@ -42,15 +41,15 @@ MAX_DET = 100
 
 CLASS_INFO = {
     "HealthyCassava": dict(
-        label="Healthy", short="Healthy", color=(46, 184, 92), diseased=False, # Green
+        label="Healthy", short="Healthy", color=(46, 184, 92), diseased=False,
         desc="Uniform green leaf with no mosaic or streak pattern.",
     ),
     "MosaicDisease": dict(
-        label="Mosaic Disease", short="CMD", color=(222, 184, 35), diseased=True, # Yellow
+        label="Mosaic Disease", short="CMD", color=(222, 184, 35), diseased=True,
         desc="Yellow-green mosaic patches, often with curled or distorted leaves.",
     ),
     "BrownStreak": dict(
-        label="Brown Streak Disease", short="CBSD", color=(139, 69, 19), diseased=True, # Brown
+        label="Brown Streak Disease", short="CBSD", color=(139, 69, 19), diseased=True,
         desc="Yellow, feathery patches that follow the veins; browning in later stages.",
     ),
 }
@@ -69,6 +68,7 @@ def class_info(name: str) -> dict:
 # Helper Functions
 # --------------------------------------------------------------------------- #
 def show_image(img, caption: str | None = None) -> None:
+    """Displays an image in the Streamlit app with layout compatibility fallbacks."""
     for kwargs in ({"width": "stretch"}, {"use_container_width": True}, {}):
         try:
             st.image(img, caption=caption, **kwargs)
@@ -77,6 +77,7 @@ def show_image(img, caption: str | None = None) -> None:
             continue
 
 def find_model_path() -> Path | None:
+    """Locates the YOLO best.pt weight file in standard directories or runs folders."""
     for p in (APP_DIR / "best.pt", APP_DIR / "weights" / "best.pt"):
         if p.is_file():
             return p
@@ -88,6 +89,7 @@ def find_model_path() -> Path | None:
 
 @st.cache_resource(show_spinner="Loading segmentation model...")
 def load_model(path_str: str) -> dict:
+    """Loads the YOLO model checkpoint and extracts metadata, architecture name, and training metrics."""
     from ultralytics import YOLO
     model = YOLO(path_str)
     ckpt = getattr(model, "ckpt", None) or {}
@@ -112,6 +114,7 @@ def load_model(path_str: str) -> dict:
     )
 
 def load_image(data: bytes) -> tuple[Image.Image | None, str | None, str | None]:
+    """Validates, cleans, strips alpha channels, corrects EXIF orientation, and resizes uploaded image bytes."""
     if not data:
         return None, "The file is empty.", None
     if len(data) > MAX_FILE_MB * 1024 * 1024:
@@ -143,9 +146,11 @@ def load_image(data: bytes) -> tuple[Image.Image | None, str | None, str | None]
     return im, None, note
 
 def _np(x) -> np.ndarray:
+    """Helper to convert PyTorch tensors or generic arrays into a numpy array."""
     return x.cpu().numpy() if hasattr(x, "cpu") else np.asarray(x)
 
 def extract_instances(res, ms: float, size: tuple[int, int]) -> dict:
+    """Parses raw YOLO prediction results into organized coordinate boxes, classes, confidences, and polygon masks."""
     n = 0 if res.boxes is None else len(res.boxes)
     out = dict(boxes=np.zeros((0, 4), np.float32), cls=np.zeros(0, int), conf=np.zeros(0, np.float32),
                polys=[], ms=ms, size=size)
@@ -162,24 +167,28 @@ def extract_instances(res, ms: float, size: tuple[int, int]) -> dict:
 
 @st.cache_data(show_spinner=False, max_entries=16)
 def infer(file_hash: str, imgsz: int, _image: Image.Image, _model) -> dict:
+    """Runs model inference on an image and caches output instances."""
     t0 = time.perf_counter()
     res = _model.predict(source=_image, conf=MIN_CONF, imgsz=imgsz, max_det=MAX_DET,
                          retina_masks=True, verbose=False)[0]
     return extract_instances(res, (time.perf_counter() - t0) * 1000.0, _image.size)
 
 def polygon_area(p: np.ndarray) -> float:
+    """Computes the pixel area enclosed by a polygon mask using the Shoelace formula."""
     if len(p) < 3:
         return 0.0
     x, y = p[:, 0], p[:, 1]
     return float(0.5 * abs(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1))))
 
 def _font(size: int):
+    """Loads a default PIL font with a requested size configuration."""
     try:
         return ImageFont.load_default(size=size)
     except Exception:
         return ImageFont.load_default()
 
 def render_overlay(img: Image.Image, view: dict, names: dict, show_masks: bool, show_boxes: bool, opacity: float) -> Image.Image:
+    """Composites visual segmentation masks, bounding boxes, and label tags onto the source image."""
     base = img.convert("RGBA")
     W, H_ = base.size
     overlay = Image.new("RGBA", base.size, (0, 0, 0, 0))
@@ -216,11 +225,13 @@ def render_overlay(img: Image.Image, view: dict, names: dict, show_masks: bool, 
     return Image.alpha_composite(base, overlay).convert("RGB")
 
 def filter_view(inst: dict, thr: float) -> dict:
+    """Filters instance predictions based on a dynamic user-selected confidence threshold."""
     keep = [i for i, c in enumerate(inst["conf"]) if c >= thr]
     return dict(boxes=inst["boxes"][keep], cls=inst["cls"][keep], conf=inst["conf"][keep],
                 polys=[inst["polys"][i] for i in keep], ms=inst["ms"], size=inst["size"])
 
 def detections_csv(view: dict, names: dict, filename: str) -> bytes:
+    """Serializes prediction records into a formatted CSV byte stream."""
     buf = io.StringIO()
     w = csv.writer(buf)
     w.writerow(["file", "index", "class", "confidence", "x1", "y1", "x2", "y2", "mask_area_px"])
@@ -235,6 +246,7 @@ _TEST_RE = re.compile(r"(^|[^a-z])test", re.I)
 
 @st.cache_data(show_spinner=False, ttl=60)
 def collect_artifacts() -> tuple[list[str], list[str]]:
+    """Discovers and segregates training evaluation graphs from testing directories inside /runs."""
     train, test = [], []
     if RUNS_DIR.is_dir():
         for p in RUNS_DIR.rglob("*"):
@@ -249,6 +261,7 @@ _CURVE_KEYS = ("epoch", "train/seg_loss", "val/seg_loss", "train/box_loss", "val
 
 @st.cache_data(show_spinner=False)
 def render_curves(hist: dict, best_epoch) -> tuple[bytes, bytes] | None:
+    """Generates matplotlib loss and metric trajectory figures compiled from training logs."""
     ep = list(hist.get("epoch") or [])
     if not ep:
         return None
@@ -333,7 +346,6 @@ with st.sidebar:
     st.subheader("Detection")
     conf_thresh = st.slider("Confidence threshold", MIN_CONF, 0.95, 0.35, 0.05)
     
-    # Mask opacity placed directly below confidence threshold
     opacity = st.slider("Mask opacity", 0.10, 0.90, 0.45, 0.05)
     
     st.subheader("Display")
@@ -372,16 +384,15 @@ tab_run, tab_model, tab_about = st.tabs(["Analyze", "Model and Results", "About"
 # ---- Analyze Tab -----------------------------------------------------------
 with tab_run:
     st.subheader("Upload leaf photos")
-    # Restricted to a maximum of 6 images
     files = st.file_uploader("JPG or PNG, up to 10 MB each. Up to 6 images max.", 
                              type=["jpg", "jpeg", "png"], accept_multiple_files=True)
 
     if not files:
         st.markdown("""
         ### How it works
-        1. **Upload:** Drop up to 6 leaf photos above.
-        2. **Tune:** Adjust the confidence threshold in the sidebar.
-        3. **Review:** Check the masks, summary, and table, then download.
+        1. Drop up to 6 leaf photos above.
+        2. Adjust the confidence threshold in the sidebar.
+        3. Check the masks, summary, and table, then download.
 
         ### For best results
         * Shoot in even daylight, in focus.
@@ -394,7 +405,6 @@ with tab_run:
             st.warning(f"Only the first {MAX_FILES} images are analyzed.")
             files = files[:MAX_FILES]
 
-        # Store batch results for multi-image bottom download functionality
         batch_results = []
 
         for idx, f in enumerate(files):
@@ -432,7 +442,6 @@ with tab_run:
 
             n_sick = len([c for c in view["cls"] if class_info(names.get(int(c), str(c)))["diseased"]])
             
-            # Metrics
             m1, m2, m3 = st.columns(3)
             m1.metric("Leaves Detected", n)
             m2.metric("Flagged Diseased", n_sick)
@@ -470,7 +479,6 @@ with tab_run:
                 overlay.save(buf, "PNG")
                 stem = Path(f.name).stem
                 
-                # Save data for batch downloading at the bottom
                 batch_results.append({
                     "filename": f.name,
                     "stem": stem,
@@ -485,7 +493,6 @@ with tab_run:
             if n == 0:
                 st.info("Tip: Ensure the leaf fills the frame and is well-lit. The model only recognizes cassava leaves.")
 
-        # ---- BOTTOM BATCH DOWNLOAD (If more than one image processed) ----
         if len(batch_results) > 1:
             st.divider()
             st.subheader("Batch Downloads")
@@ -499,7 +506,7 @@ with tab_run:
                     zip_file.writestr(f"{res['stem']}_detections.csv", res["csv_bytes"])
             
             st.download_button(
-                label="📦 Download All Results (ZIP)",
+                label="Download All Results (ZIP)",
                 data=zip_buffer.getvalue(),
                 file_name="cassavavision_batch_results.zip",
                 mime="application/zip",
