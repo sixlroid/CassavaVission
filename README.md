@@ -2,6 +2,10 @@
 
 ---
 
+# 🚀 Live Demo
+> **CassavaVision is fully deployed and ready for use!** You can access the live application here: 
+> **[https://cassavavission-42ezxnlhzfbmszjq5matxj.streamlit.app/](https://cassavavission-42ezxnlhzfbmszjq5matxj.streamlit.app/)**
+
 ## 🛠️ Setup & Installation
 
 ### 1. To download the repository (Clone)
